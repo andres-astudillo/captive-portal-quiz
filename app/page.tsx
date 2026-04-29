@@ -459,6 +459,16 @@ export default function CaptivePortal() {
                       <span className="text-sm font-medium text-gray-700 group-hover:text-white">Facebook</span>
                     </a>
 
+                    {/* YouTube */}
+                    <a href="https://www.youtube.com/@IglesiaAlameda" target="_blank" rel="noopener noreferrer"
+                      className="flex items-center gap-2 bg-white border border-primary/30 rounded-lg px-3 py-2 hover:bg-primary hover:text-white hover:border-primary transition-all duration-200 group">
+                      <svg className="w-5 h-5 text-primary group-hover:text-white flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+                        <path d="M22.54 6.42a2.78 2.78 0 0 0-1.95-1.96C18.88 4 12 4 12 4s-6.88 0-8.59.46A2.78 2.78 0 0 0 1.46 6.42 29 29 0 0 0 1 12a29 29 0 0 0 .46 5.58 2.78 2.78 0 0 0 1.95 1.96C5.12 20 12 20 12 20s6.88 0 8.59-.46a2.78 2.78 0 0 0 1.95-1.96A29 29 0 0 0 23 12a29 29 0 0 0-.46-5.58z"/>
+                        <polygon points="9.75 15.02 15.5 12 9.75 8.98 9.75 15.02" fill="currentColor" stroke="none"/>
+                      </svg>
+                      <span className="text-sm font-medium text-gray-700 group-hover:text-white">YouTube</span>
+                    </a>
+
                     {/* WhatsApp - Conectar Alameda - ocupa columna completa */}
                     <a href="https://whatsapp.com/channel/0029VaCf2Ve4o7qM38akeZ2R" target="_blank" rel="noopener noreferrer"
                       className="flex items-center gap-2 bg-primary border border-primary rounded-lg px-3 py-2 hover:bg-primary-dark transition-all duration-200 col-span-2 justify-center animate-pulse hover:animate-none">

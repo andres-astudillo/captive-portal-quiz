@@ -8,14 +8,15 @@ export async function GET(request: NextRequest) {
     
     const questions = await getRandomQuestions(count);
     
-    // No enviar la respuesta correcta al cliente
     const safeQuestions = questions.map(q => ({
       id: q.id,
       question: q.question,
       options: q.options,
-      category: q.category
+      category: q.category,
+      correctAnswer: q.correctAnswer,
+      explanation: q.explanation ?? '',
     }));
-    
+
     return NextResponse.json(safeQuestions);
   } catch (error) {
     console.error('Error al obtener preguntas:', error);

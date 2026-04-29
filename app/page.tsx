@@ -178,7 +178,7 @@ export default function CaptivePortal() {
         {/* Header */}
         <div className="bg-white border-b-4 border-primary p-8 text-center">
           <div className="flex justify-center mb-3">
-            <img src="/logo.png" alt="Alameda" className="h-20 object-contain" />
+            <img src="/logo.svg" alt="Alameda" className="h-20 object-contain" />
           </div>
           <p className="text-primary font-semibold tracking-widest text-sm uppercase">WiFi Gratuito</p>
         </div>

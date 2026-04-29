@@ -1,21 +1,18 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { getAllUsers } from '@/lib/db';
+import { getToken, verifyToken } from '@/lib/auth';
 
-export async function GET() {
+export async function GET(request: NextRequest) {
+  if (!verifyToken(getToken(request))) {
+    return NextResponse.json({ error: 'No autorizado' }, { status: 401 });
+  }
   try {
     const users = await getAllUsers();
-    
-    // Ordenar por fecha de conexión (más reciente primero)
-    const sorted = users.sort((a, b) => 
-      new Date(b.connectedAt).getTime() - new Date(a.connectedAt).getTime()
+    const sorted = users.sort(
+      (a, b) => new Date(b.connectedAt).getTime() - new Date(a.connectedAt).getTime()
     );
-    
     return NextResponse.json(sorted);
-  } catch (error) {
-    console.error('Error al obtener usuarios:', error);
-    return NextResponse.json(
-      { error: 'Error al obtener usuarios' },
-      { status: 500 }
-    );
+  } catch {
+    return NextResponse.json({ error: 'Error al obtener usuarios' }, { status: 500 });
   }
 }

@@ -52,6 +52,7 @@ export default function CaptivePortal() {
     totalQuestions: number;
     message: string;
   } | null>(null);
+  const [countdown, setCountdown] = useState<number | null>(null);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -64,6 +65,25 @@ export default function CaptivePortal() {
       redirectUrl: params.get('url') || '',
     });
   }, []);
+
+  useEffect(() => {
+    if (!result?.passed) return;
+    setCountdown(10);
+    const interval = setInterval(() => {
+      setCountdown(prev => {
+        if (prev === null || prev <= 1) {
+          clearInterval(interval);
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [result?.passed]);
+
+  useEffect(() => {
+    if (countdown === 0) grantOmadaAccess(omadaParams);
+  }, [countdown]);
 
   // Redirigir al controlador Omada para que otorgue acceso
   const grantOmadaAccess = (params: typeof omadaParams) => {
@@ -148,11 +168,6 @@ export default function CaptivePortal() {
       setResult(data);
       setStep('result');
       setLoading(false);
-
-      // Si aprobó, redirigir al controlador Omada luego de 3 segundos
-      if (data.passed) {
-        setTimeout(() => grantOmadaAccess(omadaParams), 3000);
-      }
     } catch (error) {
       console.error('Error al enviar quiz:', error);
       setLoading(false);
@@ -167,6 +182,7 @@ export default function CaptivePortal() {
     setSelectedOption(null);
     setFeedback(null);
     setResult(null);
+    setCountdown(null);
     setName('');
     setEmail('');
     setPhone('');
@@ -381,21 +397,78 @@ export default function CaptivePortal() {
             )}
 
             {result.passed && (
-              <div className="mt-6 p-4 bg-green-50 border border-green-200 rounded-lg text-center">
-                <p className="text-green-800">
-                  <strong>¡Acceso concedido!</strong>
-                </p>
-                <p className="text-green-700 text-sm mt-1">
-                  Serás redirigido automáticamente en unos segundos…
-                </p>
-                {omadaParams.loginUrl && (
-                  <button
-                    onClick={() => grantOmadaAccess(omadaParams)}
-                    className="mt-3 text-sm underline text-green-700"
-                  >
-                    Hacer clic si no fuiste redirigido
-                  </button>
-                )}
+              <div className="mt-6 space-y-4">
+                {/* Countdown */}
+                <div className="bg-green-50 border border-green-200 rounded-xl p-4 text-center">
+                  <p className="text-green-800 font-semibold">¡Acceso concedido!</p>
+                  {countdown !== null && countdown > 0 ? (
+                    <p className="text-green-700 text-sm mt-1">
+                      Conectando en{' '}
+                      <span className="font-bold text-lg text-green-800">{countdown}</span>
+                      {' '}segundos…
+                    </p>
+                  ) : (
+                    <p className="text-green-700 text-sm mt-1">Conectando…</p>
+                  )}
+                  {omadaParams.loginUrl && (
+                    <button
+                      onClick={() => grantOmadaAccess(omadaParams)}
+                      className="mt-2 text-xs underline text-green-600"
+                    >
+                      Conectar ahora
+                    </button>
+                  )}
+                </div>
+
+                {/* Invitación a redes */}
+                <div className="rounded-xl border border-primary/20 bg-primary/5 p-5">
+                  <p className="text-center text-sm text-gray-700 mb-4 leading-relaxed">
+                    Mientras esperás, ¡te invitamos a conocernos más!<br />
+                    Visitá nuestro sitio, seguinos en las redes o unite a{' '}
+                    <span className="font-semibold text-primary">Conectar Alameda</span>.
+                  </p>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    {/* Web */}
+                    <a href="https://alameda.ar" target="_blank" rel="noopener noreferrer"
+                      className="flex items-center gap-2 bg-white border border-primary/30 rounded-lg px-3 py-2 hover:bg-primary hover:text-white hover:border-primary transition-all duration-200 group">
+                      <svg className="w-5 h-5 text-primary group-hover:text-white flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+                        <circle cx="12" cy="12" r="10"/>
+                        <path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>
+                      </svg>
+                      <span className="text-sm font-medium text-gray-700 group-hover:text-white">alameda.ar</span>
+                    </a>
+
+                    {/* Instagram */}
+                    <a href="https://www.instagram.com/iglesialameda/" target="_blank" rel="noopener noreferrer"
+                      className="flex items-center gap-2 bg-white border border-primary/30 rounded-lg px-3 py-2 hover:bg-primary hover:text-white hover:border-primary transition-all duration-200 group">
+                      <svg className="w-5 h-5 text-primary group-hover:text-white flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+                        <rect x="2" y="2" width="20" height="20" rx="5" ry="5"/>
+                        <circle cx="12" cy="12" r="4"/>
+                        <circle cx="17.5" cy="6.5" r="0.8" fill="currentColor" stroke="none"/>
+                      </svg>
+                      <span className="text-sm font-medium text-gray-700 group-hover:text-white">Instagram</span>
+                    </a>
+
+                    {/* Facebook */}
+                    <a href="https://www.facebook.com/IglesiaAlameda" target="_blank" rel="noopener noreferrer"
+                      className="flex items-center gap-2 bg-white border border-primary/30 rounded-lg px-3 py-2 hover:bg-primary hover:text-white hover:border-primary transition-all duration-200 group">
+                      <svg className="w-5 h-5 text-primary group-hover:text-white flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+                        <path d="M18 2h-3a5 5 0 0 0-5 5v3H7v4h3v8h4v-8h3l1-4h-4V7a1 1 0 0 1 1-1h3z"/>
+                      </svg>
+                      <span className="text-sm font-medium text-gray-700 group-hover:text-white">Facebook</span>
+                    </a>
+
+                    {/* WhatsApp - Conectar Alameda - ocupa columna completa */}
+                    <a href="https://whatsapp.com/channel/0029VaCf2Ve4o7qM38akeZ2R" target="_blank" rel="noopener noreferrer"
+                      className="flex items-center gap-2 bg-primary border border-primary rounded-lg px-3 py-2 hover:bg-primary-dark transition-all duration-200 col-span-2 justify-center animate-pulse hover:animate-none">
+                      <svg className="w-5 h-5 text-white flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+                        <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/>
+                      </svg>
+                      <span className="text-sm font-semibold text-white">Unite a Conectar Alameda</span>
+                    </a>
+                  </div>
+                </div>
               </div>
             )}
           </div>

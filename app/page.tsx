@@ -235,7 +235,7 @@ export default function CaptivePortal() {
                 type="submit"
                 className="w-full bg-primary hover:bg-primary-dark text-white font-semibold py-3 px-6 rounded-lg transition-colors duration-200"
               >
-                Continuar al Quiz
+                Continuar al Questionario
               </button>
             </form>
           </div>
@@ -309,11 +309,10 @@ export default function CaptivePortal() {
 
             {/* Feedback box */}
             {feedback && (
-              <div className={`mt-4 p-4 rounded-lg border-l-4 ${
-                feedback.correct
+              <div className={`mt-4 p-4 rounded-lg border-l-4 ${feedback.correct
                   ? 'bg-green-50 border-green-500'
                   : 'bg-red-50 border-red-400'
-              }`}>
+                }`}>
                 <p className={`font-semibold mb-1 ${feedback.correct ? 'text-green-800' : 'text-red-700'}`}>
                   {feedback.correct ? '✓ ¡Correcto!' : '✗ Incorrecto'}
                 </p>
@@ -326,11 +325,10 @@ export default function CaptivePortal() {
             <button
               onClick={handleNextQuestion}
               disabled={!feedback}
-              className={`w-full mt-6 font-semibold py-3 px-6 rounded-lg transition-colors duration-200 ${
-                !feedback
+              className={`w-full mt-6 font-semibold py-3 px-6 rounded-lg transition-colors duration-200 ${!feedback
                   ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
                   : 'bg-primary hover:bg-primary-dark text-white'
-              }`}
+                }`}
             >
               {currentQuestion < questions.length - 1 ? 'Siguiente Pregunta' : 'Ver Resultado'}
             </button>
@@ -404,8 +402,62 @@ export default function CaptivePortal() {
         )}
 
         {/* Footer */}
-        <div className="bg-[#F5F3EF] px-8 py-4 text-center text-sm text-gray-500 border-t border-gray-200">
-          Al conectarte, aceptás nuestros términos y condiciones
+        <div className="bg-[#F5F3EF] px-6 pt-5 pb-4 border-t border-gray-200">
+          {/* Redes sociales */}
+          <div className="flex justify-center items-center gap-5 mb-4 flex-wrap">
+            {/* Web */}
+            <a href="https://alameda.ar" target="_blank" rel="noopener noreferrer"
+              className="flex flex-col items-center gap-1 text-gray-400 hover:text-primary transition-colors group">
+              <svg className="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+                <circle cx="12" cy="12" r="10"/>
+                <path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>
+              </svg>
+              <span className="text-xs">Web</span>
+            </a>
+
+            {/* Instagram */}
+            <a href="https://www.instagram.com/iglesialameda/" target="_blank" rel="noopener noreferrer"
+              className="flex flex-col items-center gap-1 text-gray-400 hover:text-primary transition-colors group">
+              <svg className="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+                <rect x="2" y="2" width="20" height="20" rx="5" ry="5"/>
+                <circle cx="12" cy="12" r="4"/>
+                <circle cx="17.5" cy="6.5" r="0.8" fill="currentColor" stroke="none"/>
+              </svg>
+              <span className="text-xs">Instagram</span>
+            </a>
+
+            {/* Facebook */}
+            <a href="https://www.facebook.com/IglesiaAlameda" target="_blank" rel="noopener noreferrer"
+              className="flex flex-col items-center gap-1 text-gray-400 hover:text-primary transition-colors group">
+              <svg className="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+                <path d="M18 2h-3a5 5 0 0 0-5 5v3H7v4h3v8h4v-8h3l1-4h-4V7a1 1 0 0 1 1-1h3z"/>
+              </svg>
+              <span className="text-xs">Facebook</span>
+            </a>
+
+            {/* YouTube */}
+            <a href="https://www.youtube.com/@IglesiaAlameda" target="_blank" rel="noopener noreferrer"
+              className="flex flex-col items-center gap-1 text-gray-400 hover:text-primary transition-colors group">
+              <svg className="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+                <path d="M22.54 6.42a2.78 2.78 0 0 0-1.95-1.96C18.88 4 12 4 12 4s-6.88 0-8.59.46A2.78 2.78 0 0 0 1.46 6.42 29 29 0 0 0 1 12a29 29 0 0 0 .46 5.58 2.78 2.78 0 0 0 1.95 1.96C5.12 20 12 20 12 20s6.88 0 8.59-.46a2.78 2.78 0 0 0 1.95-1.96A29 29 0 0 0 23 12a29 29 0 0 0-.46-5.58z"/>
+                <polygon points="9.75 15.02 15.5 12 9.75 8.98 9.75 15.02" fill="currentColor" stroke="none"/>
+              </svg>
+              <span className="text-xs">YouTube</span>
+            </a>
+
+            {/* WhatsApp */}
+            <a href="https://whatsapp.com/channel/0029VaCf2Ve4o7qM38akeZ2R" target="_blank" rel="noopener noreferrer"
+              className="flex flex-col items-center gap-1 text-gray-400 hover:text-primary transition-colors group">
+              <svg className="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+                <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/>
+              </svg>
+              <span className="text-xs">WhatsApp</span>
+            </a>
+          </div>
+
+          <p className="text-center text-xs text-gray-400">
+            Al conectarte, aceptás nuestros términos y condiciones
+          </p>
         </div>
       </div>
     </div>

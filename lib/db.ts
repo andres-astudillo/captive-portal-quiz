@@ -255,7 +255,7 @@ export async function isUserAuthorized(mac: string): Promise<boolean> {
 // Obtener todos los usuarios conectados
 export async function getAllUsers(): Promise<UserSession[]> {
   const users = await kv.lrange('users', 0, -1);
-  return users as UserSession[];
+  return users as unknown as UserSession[];
 }
 
 // Obtener estadísticas

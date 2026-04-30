@@ -28,16 +28,18 @@ export async function POST(request: NextRequest) {
       const now = new Date();
       const expiresAt = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
 
-      await saveUserSession({
-        mac,
-        name,
-        email,
-        phone,
-        connectedAt: now.toISOString(),
-        expiresAt: expiresAt.toISOString(),
-        correctAnswers: correctCount,
-        totalAttempts,
-      });
+      // Guardar en KV sin bloquear la respuesta si falla
+      try {
+        await saveUserSession({
+          mac, name, email, phone,
+          connectedAt: now.toISOString(),
+          expiresAt: expiresAt.toISOString(),
+          correctAnswers: correctCount,
+          totalAttempts,
+        });
+      } catch (e) {
+        console.error('KV save failed (non-fatal):', e);
+      }
 
       return NextResponse.json({
         passed: true,

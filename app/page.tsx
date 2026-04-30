@@ -27,13 +27,19 @@ export default function CaptivePortal() {
     ap: string;
     ssid: string;
     t: string;
+    site: string;
+    clientIp: string;
+    radioId: string;
     loginUrl: string;
     redirectUrl: string;
   }>({
-    mac: 'AA:BB:CC:DD:EE:FF',
+    mac: '',
     ap: '',
     ssid: '',
     t: '',
+    site: '',
+    clientIp: '',
+    radioId: '',
     loginUrl: '',
     redirectUrl: '',
   });
@@ -57,12 +63,15 @@ export default function CaptivePortal() {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     setOmadaParams({
-      mac: params.get('mac') || 'AA:BB:CC:DD:EE:FF',
-      ap: params.get('ap') || '',
-      ssid: params.get('ssid') || '',
+      mac: params.get('clientMac') || params.get('mac') || '',
+      ap: params.get('apMac') || params.get('ap') || '',
+      ssid: params.get('ssidName') || params.get('ssid') || '',
       t: params.get('t') || String(Date.now()),
+      site: params.get('site') || '',
+      clientIp: params.get('clientIp') || '',
+      radioId: params.get('radioId') || '',
       loginUrl: params.get('loginUrl') || '',
-      redirectUrl: params.get('url') || '',
+      redirectUrl: params.get('redirectUrl') || params.get('url') || '',
     });
   }, []);
 
@@ -87,12 +96,29 @@ export default function CaptivePortal() {
 
   // Redirigir al controlador Omada para que otorgue acceso
   const grantOmadaAccess = (params: typeof omadaParams) => {
-    if (!params.loginUrl) return;
-    const authUrl = new URL(params.loginUrl);
-    authUrl.searchParams.set('mac', params.mac);
+    let baseUrl: string;
+
+    if (params.loginUrl) {
+      baseUrl = params.loginUrl;
+    } else if (params.clientIp) {
+      // Sin loginUrl, Omada hardware gateway escucha en el gateway de la subred
+      // Puerto 8088 HTTP (ver configuración Omada: HTTP Port for Portal)
+      const parts = params.clientIp.split('.');
+      parts[3] = '1';
+      baseUrl = `http://${parts.join('.')}:8088/portal/auth`;
+    } else {
+      if (params.redirectUrl) window.location.href = params.redirectUrl;
+      return;
+    }
+
+    const authUrl = new URL(baseUrl);
+    authUrl.searchParams.set('t', params.t);
+    authUrl.searchParams.set('clientMac', params.mac);
     authUrl.searchParams.set('ap', params.ap);
     authUrl.searchParams.set('ssid', params.ssid);
-    authUrl.searchParams.set('t', params.t);
+    authUrl.searchParams.set('site', params.site);
+    authUrl.searchParams.set('radioId', params.radioId);
+    authUrl.searchParams.set('redirectUrl', params.redirectUrl);
     window.location.href = authUrl.toString();
   };
 
@@ -149,29 +175,50 @@ export default function CaptivePortal() {
   };
 
   const submitQuiz = async (finalAnswers: typeof answers) => {
+    setLoading(true);
+
+    // Calcular puntaje localmente como fallback
+    const localCorrect = finalAnswers.filter(a => {
+      const q = questions.find(q2 => q2.id === a.questionId);
+      return q !== undefined && q.correctAnswer === a.selectedAnswer;
+    }).length;
+    const localPassed = localCorrect >= 3;
+
+    let resultData = {
+      passed: localPassed,
+      correctAnswers: localCorrect,
+      totalQuestions: finalAnswers.length,
+      message: localPassed
+        ? '¡Respondiste correctamente! Ya podés navegar.'
+        : `Necesitás al menos 3 respuestas correctas. Obtuviste ${localCorrect}.`,
+    };
+
     try {
-      setLoading(true);
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 12000);
 
       const response = await fetch('/api/submit', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           mac: omadaParams.mac,
-          name,
-          email,
-          phone,
+          name, email, phone,
           answers: finalAnswers,
         }),
+        signal: controller.signal,
       });
+      clearTimeout(timeoutId);
 
       const data = await response.json();
-      setResult(data);
-      setStep('result');
-      setLoading(false);
-    } catch (error) {
-      console.error('Error al enviar quiz:', error);
-      setLoading(false);
+      if (data.passed !== undefined) resultData = data;
+    } catch {
+      // API falló o tardó demasiado → usamos el puntaje local
+      console.error('Submit API timeout/error, usando puntaje local');
     }
+
+    setResult(resultData);
+    setStep('result');
+    setLoading(false);
   };
 
   const resetQuiz = () => {

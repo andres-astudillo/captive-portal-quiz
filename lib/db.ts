@@ -231,9 +231,25 @@ export async function deleteQuestion(id: string) {
 export async function saveUserSession(session: UserSession) {
   await kv.set(`session:${session.mac}`, session);
   await kv.expire(`session:${session.mac}`, 7 * 24 * 60 * 60); // 7 días
-  
-  // Agregar a lista de usuarios
   await kv.lpush('users', session);
+}
+
+// Eliminar un usuario por MAC
+export async function deleteUserSession(mac: string) {
+  await kv.del(`session:${mac}`);
+  const all = await getAllUsers();
+  const remaining = all.filter(u => u.mac !== mac);
+  await kv.del('users');
+  for (const u of remaining.slice().reverse()) {
+    await kv.lpush('users', u);
+  }
+}
+
+// Eliminar todos los usuarios
+export async function deleteAllUsers() {
+  const all = await getAllUsers();
+  await Promise.all(all.map(u => kv.del(`session:${u.mac}`)));
+  await kv.del('users');
 }
 
 // Obtener sesión de usuario

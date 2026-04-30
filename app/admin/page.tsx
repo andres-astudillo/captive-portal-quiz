@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Users, HelpCircle, TrendingUp, Download, Plus, Trash2, Edit, LogOut, X, Eye, EyeOff } from 'lucide-react';
+import { Users, HelpCircle, TrendingUp, Download, Plus, Trash2, Edit, LogOut, X, Eye, EyeOff, UserX } from 'lucide-react';
 
 interface UserSession {
   mac: string; name: string; email: string; phone: string;
@@ -257,6 +257,18 @@ function AdminDashboard({ token, onLogout }: { token: string; onLogout: () => vo
     load('questions');
   };
 
+  const deleteUser = async (mac: string, name: string) => {
+    if (!confirm(`¿Eliminás a ${name}? Perderá el acceso al WiFi.`)) return;
+    await fetch(`/api/admin/users?mac=${encodeURIComponent(mac)}`, { method: 'DELETE', headers });
+    load('users');
+  };
+
+  const deleteAllUsers = async () => {
+    if (!confirm('¿Eliminás TODOS los usuarios? Todos perderán el acceso al WiFi.')) return;
+    await fetch('/api/admin/users?mac=all', { method: 'DELETE', headers });
+    load('users');
+  };
+
   const exportCSV = () => {
     const rows = [
       ['Nombre', 'Email', 'Teléfono', 'MAC', 'Conectado', 'Expira', 'Correctas', 'Intentos'],
@@ -334,19 +346,25 @@ function AdminDashboard({ token, onLogout }: { token: string; onLogout: () => vo
         {/* Users */}
         {!loading && activeTab === 'users' && (
           <div className="bg-white rounded-xl shadow overflow-hidden">
-            <div className="p-5 border-b flex justify-between items-center">
+            <div className="p-5 border-b flex justify-between items-center gap-3 flex-wrap">
               <h2 className="text-lg font-semibold text-gray-900">Lista de usuarios</h2>
-              <button onClick={exportCSV}
-                className="flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary-dark text-sm">
-                <Download size={16} />Exportar CSV
-              </button>
+              <div className="flex gap-2">
+                <button onClick={exportCSV}
+                  className="flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary-dark text-sm">
+                  <Download size={16} />Exportar CSV
+                </button>
+                <button onClick={deleteAllUsers}
+                  className="flex items-center gap-2 px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 text-sm">
+                  <UserX size={16} />Eliminar todos
+                </button>
+              </div>
             </div>
             <div className="overflow-x-auto">
               <table className="min-w-full divide-y divide-gray-200 text-sm">
                 <thead className="bg-gray-50">
                   <tr>
-                    {['Nombre', 'Email', 'Teléfono', 'Conectado', 'Expira', 'Score'].map(h => (
-                      <th key={h} className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">{h}</th>
+                    {['Nombre', 'Email', 'Teléfono', 'Conectado', 'Expira', 'Score', ''].map((h, i) => (
+                      <th key={i} className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">{h}</th>
                     ))}
                   </tr>
                 </thead>
@@ -362,6 +380,15 @@ function AdminDashboard({ token, onLogout }: { token: string; onLogout: () => vo
                       <td className="px-6 py-4 text-gray-500">{new Date(u.connectedAt).toLocaleDateString('es-AR')}</td>
                       <td className="px-6 py-4 text-gray-500">{new Date(u.expiresAt).toLocaleDateString('es-AR')}</td>
                       <td className="px-6 py-4 text-gray-500">{u.correctAnswers}/5 ({u.totalAttempts} int.)</td>
+                      <td className="px-6 py-4">
+                        <button
+                          onClick={() => deleteUser(u.mac, u.name)}
+                          className="p-1.5 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                          title="Eliminar usuario"
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      </td>
                     </tr>
                   ))}
                 </tbody>

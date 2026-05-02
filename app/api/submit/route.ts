@@ -55,7 +55,7 @@ async function grantOmadaAccess(params: {
     ssidName: params.ssidName,
     radioId: parseInt(params.radioId) || 0,
     site: params.site || process.env.OMADA_SITE_NAME || 'Default',
-    time: 604800, // 7 días en segundos
+    time: 86400, // 1 día en segundos
     authType: 4,
   };
 
@@ -98,7 +98,7 @@ export async function POST(request: NextRequest) {
 
     if (passed) {
       const now = new Date();
-      const expiresAt = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
+      const expiresAt = new Date(now.getTime() + 24 * 60 * 60 * 1000);
 
       // Guardar sesión en KV (no bloquea si falla)
       try {

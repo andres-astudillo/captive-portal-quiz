@@ -230,7 +230,7 @@ export async function deleteQuestion(id: string) {
 // Guardar sesión de usuario
 export async function saveUserSession(session: UserSession) {
   await kv.set(`session:${session.mac}`, session);
-  await kv.expire(`session:${session.mac}`, 7 * 24 * 60 * 60); // 7 días
+  await kv.expire(`session:${session.mac}`, 24 * 60 * 60); // 1 día
   await kv.lpush('users', session);
 }
 

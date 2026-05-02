@@ -122,12 +122,22 @@ export default function CaptivePortal() {
     window.location.href = authUrl.toString();
   };
 
+  const shuffleOptions = (question: Question): Question => {
+    const correctText = question.options[question.correctAnswer];
+    const shuffled = [...question.options].sort(() => Math.random() - 0.5);
+    return {
+      ...question,
+      options: shuffled,
+      correctAnswer: shuffled.indexOf(correctText),
+    };
+  };
+
   const loadQuestions = async () => {
     try {
       setLoading(true);
       const response = await fetch('/api/questions?count=5');
-      const data = await response.json();
-      setQuestions(data);
+      const data: Question[] = await response.json();
+      setQuestions(data.map(shuffleOptions));
       setLoading(false);
     } catch (error) {
       console.error('Error al cargar preguntas:', error);
@@ -204,6 +214,10 @@ export default function CaptivePortal() {
           mac: omadaParams.mac,
           name, email, phone,
           answers: finalAnswers,
+          apMac: omadaParams.ap,
+          ssidName: omadaParams.ssid,
+          radioId: omadaParams.radioId,
+          site: omadaParams.site,
         }),
         signal: controller.signal,
       });

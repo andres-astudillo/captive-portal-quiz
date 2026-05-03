@@ -8,32 +8,46 @@ function isPrivateIp(url: string): boolean {
   } catch { return true; }
 }
 
-async function getOmadaCloudSession(): Promise<string | null> {
+async function getOmadaCloudSession(controllerId: string): Promise<string | null> {
   const email = process.env.OMADA_CLOUD_EMAIL;
   const password = process.env.OMADA_CLOUD_PASSWORD;
   if (!email || !password) return null;
 
-  try {
-    const res = await fetch('https://use1-omada-cloud.tplinkcloud.com/api/v2/user/login', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
-      body: JSON.stringify({ name: email, password }),
-    });
-    const text = await res.text();
-    console.log('[Omada Cloud] Login response:', res.status, text.slice(0, 200));
-    if (!res.ok) return null;
-    const cookie = res.headers.get('set-cookie');
-    if (cookie) return cookie;
+  // Try multiple possible Omada Cloud login endpoints
+  const candidates = [
+    `https://use1-api-omada-cloud.tplinkcloud.com/api/v2/user/login`,
+    `https://use1-omada-cloud.tplinkcloud.com/api/v2/login`,
+    `https://use1-omada.tplinkcloud.com/api/v2/user/login`,
+    `https://use1-api-omada-controller-connector.tplinkcloud.com/api/v2/user/login`,
+    `https://use1-api-omada-controller-connector.tplinkcloud.com/${controllerId}/api/v2/login`,
+  ];
+
+  for (const url of candidates) {
     try {
-      const data = JSON.parse(text) as { result?: { token?: string } };
-      const token = data.result?.token;
-      if (token) return `TPOMADA_SESSIONID=${token}`;
-    } catch { /* ignore */ }
-    return null;
-  } catch (e) {
-    console.warn('[Omada Cloud] Cloud login error:', e);
-    return null;
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+        body: JSON.stringify({ name: email, password }),
+      });
+      const text = await res.text();
+      console.log(`[Omada Cloud] Login at ${url}: status=${res.status} body=${text.slice(0, 150)}`);
+      if (!res.ok) continue;
+      try {
+        const data = JSON.parse(text) as { errorCode?: number; result?: { token?: string; sessionId?: string } };
+        if (data.errorCode === 0 || data.result?.token || data.result?.sessionId) {
+          const token = data.result?.token || data.result?.sessionId;
+          const cookie = res.headers.get('set-cookie');
+          if (token) { console.log('[Omada Cloud] Got token from:', url); return `TPOMADA_SESSIONID=${token}`; }
+          if (cookie) { console.log('[Omada Cloud] Got cookie from:', url); return cookie; }
+        }
+      } catch { /* ignore */ }
+    } catch (e) {
+      console.warn(`[Omada Cloud] Login error at ${url}:`, String(e).slice(0, 80));
+    }
   }
+
+  console.warn('[Omada Cloud] All login URLs failed');
+  return null;
 }
 
 async function tryPost(
@@ -70,11 +84,18 @@ async function grantOmadaAccess(params: {
     throw new Error('Omada credentials not configured');
   }
 
-  const base = `https://use1-api-omada-controller-connector.tplinkcloud.com/${controllerId}`;
-  const siteId = params.site; // e.g. '69ef7391c2742a4b88793b45'
+  // OMADA_LOCAL_URL: a local relay/tunnel URL pointing to the OC200 API
+  // (e.g. a Cloudflare Tunnel at https://xyz.trycloudflare.com → http://192.168.2.1:8088)
+  // When set, bypasses the cloud connector entirely — no cloud auth needed.
+  const localUrl = process.env.OMADA_LOCAL_URL?.replace(/\/$/, '');
+  const base = localUrl
+    ? localUrl
+    : `https://use1-api-omada-controller-connector.tplinkcloud.com/${controllerId}`;
 
-  const cloudCookie = await getOmadaCloudSession();
-  console.log('[Omada] siteId:', siteId, '| cloudCookie present:', !!cloudCookie);
+  const siteId = params.site;
+
+  const cloudCookie = localUrl ? null : await getOmadaCloudSession(controllerId);
+  console.log('[Omada] base:', base, '| siteId:', siteId, '| cloudCookie present:', !!cloudCookie);
 
   // Step 1: operator login — try site-specific paths first (Omada v6.x requirement)
   const loginCandidates: string[] = [];

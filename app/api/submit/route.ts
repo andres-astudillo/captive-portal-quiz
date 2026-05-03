@@ -8,14 +8,69 @@ function isPrivateIp(url: string): boolean {
   } catch { return true; }
 }
 
-async function tryOperatorLogin(url: string, username: string, password: string) {
+async function getOmadaCloudSession(): Promise<string | null> {
+  const email = process.env.OMADA_CLOUD_EMAIL;
+  const password = process.env.OMADA_CLOUD_PASSWORD;
+  if (!email || !password) return null;
+
+  // Try Omada Cloud login to get a session cookie for the connector
+  const loginUrl = `https://use1-omada-cloud.tplinkcloud.com/api/v2/user/login`;
+  console.log('[Omada Cloud] Attempting cloud login for:', email);
+
+  try {
+    const res = await fetch(loginUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+      },
+      body: JSON.stringify({ name: email, password }),
+    });
+    const text = await res.text();
+    console.log('[Omada Cloud] Login response status:', res.status, text.slice(0, 300));
+
+    if (!res.ok) return null;
+
+    // Return Set-Cookie header to pass to connector requests
+    const cookie = res.headers.get('set-cookie');
+    if (cookie) {
+      console.log('[Omada Cloud] Got cloud session cookie');
+      return cookie;
+    }
+
+    // Maybe the token is in the body
+    try {
+      const data = JSON.parse(text) as { result?: { token?: string; sessionId?: string } };
+      const token = data.result?.token || data.result?.sessionId;
+      if (token) {
+        console.log('[Omada Cloud] Got cloud token from body');
+        return `TPOMADA_SESSIONID=${token}`;
+      }
+    } catch { /* ignore */ }
+
+    return null;
+  } catch (e) {
+    console.warn('[Omada Cloud] Cloud login failed:', e);
+    return null;
+  }
+}
+
+async function tryOperatorLogin(
+  url: string,
+  username: string,
+  password: string,
+  cloudCookie?: string | null,
+) {
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    'Accept': 'application/json',
+    'X-Requested-With': 'XMLHttpRequest',
+  };
+  if (cloudCookie) headers['Cookie'] = cloudCookie;
+
   const res = await fetch(url, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Accept': 'application/json',
-      'X-Requested-With': 'XMLHttpRequest',
-    },
+    headers,
     body: JSON.stringify({ name: username, password }),
   });
   const text = await res.text();
@@ -42,27 +97,26 @@ async function grantOmadaAccess(params: {
 
   const connectorBase = `https://use1-api-omada-controller-connector.tplinkcloud.com/${controllerId}`;
 
+  // Get cloud session (needed for cloud connector auth)
+  const cloudCookie = await getOmadaCloudSession();
+
   // Build a prioritized list of step-1 (operator login) URLs to try
   const step1Candidates: string[] = [];
-
-  // If Omada provided a loginUrl that's cloud-accessible, try it first
   if (params.loginUrl && !isPrivateIp(params.loginUrl)) {
     step1Candidates.push(params.loginUrl);
   }
-
-  // Cloud connector variations
   step1Candidates.push(`${connectorBase}/api/v2/hotspot/extPortal/auth`);
   step1Candidates.push(`${connectorBase}/hotspot/extPortal/auth`);
 
   console.log('[Omada] loginUrl from client:', params.loginUrl || '(empty)');
-  console.log('[Omada] step1 candidates:', step1Candidates);
+  console.log('[Omada] cloudCookie present:', !!cloudCookie);
 
   let csrfToken: string | null = null;
   let sessionCookies: string | null = null;
 
   for (const url of step1Candidates) {
-    console.log('[Omada] Trying login at:', url);
-    const { ok, text, data, cookies } = await tryOperatorLogin(url, username, password);
+    console.log('[Omada] Trying operator login at:', url);
+    const { ok, text, data, cookies } = await tryOperatorLogin(url, username, password, cloudCookie);
     console.log('[Omada] Login response:', text.slice(0, 400));
 
     const token = (data as { result?: { token?: string } }).result?.token;
@@ -71,7 +125,7 @@ async function grantOmadaAccess(params: {
     if (token) {
       csrfToken = token;
       sessionCookies = cookies;
-      console.log('[Omada] Login success at:', url);
+      console.log('[Omada] Operator login success at:', url);
       break;
     }
 
@@ -83,7 +137,9 @@ async function grantOmadaAccess(params: {
   }
 
   if (!csrfToken) {
-    throw new Error(`Operator login failed on all endpoints. loginUrl="${params.loginUrl}"`);
+    throw new Error(
+      `Operator login failed on all endpoints. loginUrl="${params.loginUrl}", cloudCookie=${!!cloudCookie}`,
+    );
   }
 
   // Paso 2: Autorizar el cliente
@@ -93,7 +149,9 @@ async function grantOmadaAccess(params: {
     'Csrf-Token': csrfToken,
     'X-Requested-With': 'XMLHttpRequest',
   };
-  if (sessionCookies) authHeaders['Cookie'] = sessionCookies;
+  // Merge cookies: cloud cookie + operator session cookie
+  const cookieHeader = [cloudCookie, sessionCookies].filter(Boolean).join('; ');
+  if (cookieHeader) authHeaders['Cookie'] = cookieHeader;
 
   const authBody = {
     clientMac: params.clientMac,

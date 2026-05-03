@@ -33,7 +33,7 @@ export default function CaptivePortal() {
 
   const [questions, setQuestions] = useState<Question[]>([]);
   const [currentQuestion, setCurrentQuestion] = useState(0);
-  const [answers, setAnswers] = useState<{ questionId: string; selectedAnswer: number }[]>([]);
+  const [answers, setAnswers] = useState<{ questionId: string; selectedAnswer: number; selectedText: string }[]>([]);
   const [selectedOption, setSelectedOption] = useState<number | null>(null);
   const [feedback, setFeedback] = useState<{ correct: boolean; correctIndex: number; explanation: string } | null>(null);
 
@@ -81,26 +81,26 @@ export default function CaptivePortal() {
   }, [countdown]);
 
   const grantOmadaAccess = (params: typeof omadaParams) => {
-    let baseUrl: string;
+    // If Omada provided a loginUrl, use it directly
     if (params.loginUrl) {
-      baseUrl = params.loginUrl;
-    } else if (params.clientIp) {
-      const parts = params.clientIp.split('.');
-      parts[3] = '1';
-      baseUrl = `http://${parts.join('.')}:8088/portal/auth`;
-    } else {
-      if (params.redirectUrl) window.location.href = params.redirectUrl;
+      const url = new URL(params.loginUrl);
+      url.searchParams.set('t', params.t);
+      url.searchParams.set('clientMac', params.mac);
+      if (params.redirectUrl) url.searchParams.set('redirectUrl', params.redirectUrl);
+      window.location.href = url.toString();
       return;
     }
-    const authUrl = new URL(baseUrl);
-    authUrl.searchParams.set('t', params.t);
-    authUrl.searchParams.set('clientMac', params.mac);
-    authUrl.searchParams.set('ap', params.ap);
-    authUrl.searchParams.set('ssid', params.ssid);
-    authUrl.searchParams.set('site', params.site);
-    authUrl.searchParams.set('radioId', params.radioId);
-    authUrl.searchParams.set('redirectUrl', params.redirectUrl);
-    window.location.href = authUrl.toString();
+    // The server-side API already granted access; redirect to the post-auth landing page
+    if (params.redirectUrl) {
+      window.location.href = params.redirectUrl;
+      return;
+    }
+    // Last resort: try gateway auth endpoint
+    if (params.clientIp) {
+      const parts = params.clientIp.split('.');
+      parts[3] = '1';
+      window.location.href = `http://${parts.join('.')}:8088/portal/auth?t=${params.t}&clientMac=${params.mac}`;
+    }
   };
 
   const shuffleOptions = (question: Question): Question => {
@@ -141,7 +141,7 @@ export default function CaptivePortal() {
 
   const handleNextQuestion = () => {
     if (selectedOption === null || !feedback) return;
-    const newAnswers = [...answers, { questionId: questions[currentQuestion].id, selectedAnswer: selectedOption }];
+    const newAnswers = [...answers, { questionId: questions[currentQuestion].id, selectedAnswer: selectedOption, selectedText: questions[currentQuestion].options[selectedOption] }];
     setAnswers(newAnswers);
     setSelectedOption(null);
     setFeedback(null);
@@ -176,6 +176,8 @@ export default function CaptivePortal() {
           answers: finalAnswers,
           apMac: omadaParams.ap, ssidName: omadaParams.ssid,
           radioId: omadaParams.radioId, site: omadaParams.site,
+          loginUrl: omadaParams.loginUrl,
+          redirectUrl: omadaParams.redirectUrl,
         }),
         signal: controller.signal,
       });
@@ -418,6 +420,20 @@ export default function CaptivePortal() {
                 </button>
               )}
 
+              {result.passed && omadaParams.loginUrl === '' && (
+                <div className="mt-2 p-3 rounded-xl bg-yellow-500/10 border border-yellow-400/30 text-xs text-yellow-300 font-mono break-all">
+                  <span className="font-semibold">loginUrl:</span> (vacío — Omada no lo envió)
+                  <br/><span className="font-semibold">redirectUrl:</span> {omadaParams.redirectUrl || '(vacío)'}
+                  <br/><span className="font-semibold">mac:</span> {omadaParams.mac || '(vacío)'}
+                </div>
+              )}
+
+              {result.passed && omadaParams.loginUrl !== '' && (
+                <div className="mt-2 p-3 rounded-xl bg-blue-500/10 border border-blue-400/30 text-xs text-blue-300 font-mono break-all">
+                  <span className="font-semibold">loginUrl:</span> {omadaParams.loginUrl}
+                </div>
+              )}
+
               {result.passed && (
                 <div className="mt-6 space-y-4">
                   <div className="bg-green-500/15 border border-green-400/30 rounded-2xl p-4 text-center">
@@ -431,14 +447,12 @@ export default function CaptivePortal() {
                     ) : (
                       <p className="text-green-400/80 text-sm mt-1">Conectando…</p>
                     )}
-                    {omadaParams.loginUrl && (
-                      <button
-                        onClick={() => grantOmadaAccess(omadaParams)}
-                        className="mt-2 text-xs underline text-green-400/70"
-                      >
-                        Conectar ahora
-                      </button>
-                    )}
+                    <button
+                      onClick={() => grantOmadaAccess(omadaParams)}
+                      className="mt-3 bg-green-400/20 border border-green-400/40 text-green-200 text-sm font-semibold px-4 py-2 rounded-xl hover:bg-green-400/30 transition-all"
+                    >
+                      Conectar ahora →
+                    </button>
                   </div>
 
                   <div className="rounded-2xl border border-white/10 bg-white/[0.05] p-5">

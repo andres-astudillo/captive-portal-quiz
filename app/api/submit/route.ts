@@ -1,264 +1,125 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getQuestions, saveUserSession, getUserSession } from '@/lib/db';
+import { authorizeClient } from '@/lib/omada';
 
-function isPrivateIp(url: string): boolean {
-  try {
-    const { hostname } = new URL(url);
-    return /^(10\.|192\.168\.|172\.(1[6-9]|2[0-9]|3[01])\.|127\.|localhost)/.test(hostname);
-  } catch { return true; }
-}
-
-async function getOmadaCloudSession(controllerId: string): Promise<string | null> {
-  const email = process.env.OMADA_CLOUD_EMAIL;
-  const password = process.env.OMADA_CLOUD_PASSWORD;
-  if (!email || !password) return null;
-
-  // Try multiple possible Omada Cloud login endpoints
-  const candidates = [
-    `https://use1-api-omada-cloud.tplinkcloud.com/api/v2/user/login`,
-    `https://use1-omada-cloud.tplinkcloud.com/api/v2/login`,
-    `https://use1-omada.tplinkcloud.com/api/v2/user/login`,
-    `https://use1-api-omada-controller-connector.tplinkcloud.com/api/v2/user/login`,
-    `https://use1-api-omada-controller-connector.tplinkcloud.com/${controllerId}/api/v2/login`,
-  ];
-
-  for (const url of candidates) {
-    try {
-      const res = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
-        body: JSON.stringify({ name: email, password }),
-      });
-      const text = await res.text();
-      console.log(`[Omada Cloud] Login at ${url}: status=${res.status} body=${text.slice(0, 150)}`);
-      if (!res.ok) continue;
-      try {
-        const data = JSON.parse(text) as { errorCode?: number; result?: { token?: string; sessionId?: string } };
-        if (data.errorCode === 0 || data.result?.token || data.result?.sessionId) {
-          const token = data.result?.token || data.result?.sessionId;
-          const cookie = res.headers.get('set-cookie');
-          if (token) { console.log('[Omada Cloud] Got token from:', url); return `TPOMADA_SESSIONID=${token}`; }
-          if (cookie) { console.log('[Omada Cloud] Got cookie from:', url); return cookie; }
-        }
-      } catch { /* ignore */ }
-    } catch (e) {
-      console.warn(`[Omada Cloud] Login error at ${url}:`, String(e).slice(0, 80));
-    }
-  }
-
-  console.warn('[Omada Cloud] All login URLs failed');
-  return null;
-}
-
-async function tryPost(
-  url: string,
-  body: Record<string, unknown>,
-  extraHeaders?: Record<string, string>,
-): Promise<{ ok: boolean; text: string; data: Record<string, unknown>; cookies: string | null }> {
-  const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
-    'Accept': 'application/json',
-    'X-Requested-With': 'XMLHttpRequest',
-    ...extraHeaders,
-  };
-  const res = await fetch(url, { method: 'POST', headers, body: JSON.stringify(body) });
-  const text = await res.text();
-  let data: Record<string, unknown> = {};
-  try { data = JSON.parse(text); } catch { /* ignore */ }
-  return { ok: res.ok, text, data, cookies: res.headers.get('set-cookie') };
-}
-
-async function grantOmadaAccess(params: {
-  clientMac: string;
-  apMac: string;
-  ssidName: string;
-  radioId: string;
-  site: string; // site ID from Omada redirect params
-  loginUrl?: string;
-}) {
-  const controllerId = process.env.OMADA_CONTROLLER_ID;
-  const username = process.env.OMADA_USERNAME;
-  const password = process.env.OMADA_PASSWORD;
-
-  if (!controllerId || !username || !password) {
-    throw new Error('Omada credentials not configured');
-  }
-
-  // OMADA_LOCAL_URL: a local relay/tunnel URL pointing to the OC200 API
-  // (e.g. a Cloudflare Tunnel at https://xyz.trycloudflare.com → http://192.168.2.1:8088)
-  // When set, bypasses the cloud connector entirely — no cloud auth needed.
-  const localUrl = process.env.OMADA_LOCAL_URL?.replace(/\/$/, '');
-  const base = localUrl
-    ? localUrl
-    : `https://use1-api-omada-controller-connector.tplinkcloud.com/${controllerId}`;
-
-  const siteId = params.site;
-
-  const cloudCookie = localUrl ? null : await getOmadaCloudSession(controllerId);
-  console.log('[Omada] base:', base, '| siteId:', siteId, '| cloudCookie present:', !!cloudCookie);
-
-  // Step 1: operator login — try site-specific paths first (Omada v6.x requirement)
-  const loginCandidates: string[] = [];
-  if (params.loginUrl && !isPrivateIp(params.loginUrl)) {
-    loginCandidates.push(params.loginUrl);
-  }
-  if (siteId) {
-    loginCandidates.push(`${base}/api/v2/sites/${siteId}/hotspot/extPortal/auth`);
-    loginCandidates.push(`${base}/api/v2/${siteId}/hotspot/extPortal/auth`);
-  }
-  loginCandidates.push(`${base}/api/v2/hotspot/extPortal/auth`);
-  loginCandidates.push(`${base}/hotspot/extPortal/auth`);
-
-  console.log('[Omada] login candidates:', loginCandidates);
-
-  let csrfToken: string | null = null;
-  let sessionCookies: string | null = null;
-
-  for (const url of loginCandidates) {
-    console.log('[Omada] Trying login at:', url);
-    const extraHeaders: Record<string, string> = {};
-    const cookieHeader = cloudCookie || '';
-    if (cookieHeader) extraHeaders['Cookie'] = cookieHeader;
-
-    const { ok, text, data, cookies } = await tryPost(url, { name: username, password }, extraHeaders);
-    console.log('[Omada] Login response:', text.slice(0, 300));
-
-    const token = (data as { result?: { token?: string } }).result?.token;
-    const errorCode = (data as { errorCode?: number }).errorCode;
-
-    if (token) {
-      csrfToken = token;
-      sessionCookies = cookies;
-      console.log('[Omada] Operator login SUCCESS at:', url);
-      break;
-    }
-
-    console.warn(`[Omada] Login failed at ${url} — errorCode=${errorCode}, ok=${ok}`);
-  }
-
-  if (!csrfToken) {
-    throw new Error(`Operator login failed on all endpoints. siteId="${siteId}", loginUrl="${params.loginUrl}"`);
-  }
-
-  // Step 2: authorize client — also try site-specific paths
-  const cookieParts = [cloudCookie, sessionCookies].filter(Boolean);
-  const authCookie = cookieParts.join('; ');
-  const authExtraHeaders: Record<string, string> = { 'Csrf-Token': csrfToken };
-  if (authCookie) authExtraHeaders['Cookie'] = authCookie;
-
-  const authBody = {
-    clientMac: params.clientMac,
-    apMac: params.apMac,
-    ssidName: params.ssidName,
-    radioId: parseInt(params.radioId) || 0,
-    site: siteId || process.env.OMADA_SITE_NAME || 'Default',
-    time: 86400,
-    authType: 4,
-  };
-
-  const authCandidates: string[] = [];
-  if (siteId) {
-    authCandidates.push(`${base}/api/v2/sites/${siteId}/hotspot/login`);
-    authCandidates.push(`${base}/api/v2/${siteId}/hotspot/login`);
-  }
-  authCandidates.push(`${base}/api/v2/hotspot/login`);
-
-  for (const url of authCandidates) {
-    console.log('[Omada] Trying authorize at:', url, JSON.stringify(authBody));
-    const { ok, text, data } = await tryPost(url, authBody, authExtraHeaders);
-    console.log('[Omada] Authorize response:', text.slice(0, 300));
-
-    const errorCode = (data as { errorCode?: number }).errorCode;
-    if (errorCode === 0 || (ok && errorCode === undefined)) {
-      console.log('[Omada] Access GRANTED for', params.clientMac);
-      return;
-    }
-
-    console.warn(`[Omada] Authorize failed at ${url} — errorCode=${errorCode}, ok=${ok}`);
-    if (errorCode === 0) break; // shouldn't happen but guard
-  }
-
-  throw new Error(`Authorize failed on all endpoints for clientMac=${params.clientMac}`);
-}
+/**
+ * POST /api/submit
+ *
+ * Receives the quiz answers + Omada redirect params from the client.
+ * If the user passed (>=3 correct), authorizes the client MAC via Omada Open API
+ * so the gateway lets it through to the internet.
+ *
+ * Required env vars (see lib/omada.ts):
+ *   OMADA_OPENAPI_BASE_URL, OMADA_CLIENT_ID, OMADA_CLIENT_SECRET,
+ *   OMADAC_ID, OMADA_SITE_ID
+ *
+ * Note: OMADA_SITE_ID is the controller's site UUID. We fall back to the `site`
+ * param sent by Omada in the redirect, but pinning it via env var is safer.
+ */
 
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { mac, name, email, phone, answers, apMac, ssidName, radioId, site, loginUrl } = body;
+    const {
+      mac,
+      name,
+      email,
+      phone,
+      answers,
+      apMac,
+      ssidName,
+      radioId,
+      site, // siteId from Omada redirect — used as fallback only
+    } = body as {
+      mac?: string;
+      name?: string;
+      email?: string;
+      phone?: string;
+      answers?: { questionId: string; selectedAnswer: number; selectedText: string }[];
+      apMac?: string;
+      ssidName?: string;
+      radioId?: string | number;
+      site?: string;
+    };
 
-    console.log('[Submit] params:', { mac, apMac, ssidName, radioId, site, loginUrl: loginUrl || '(none)' });
+    console.log('[Submit] params:', { mac, apMac, ssidName, radioId, site });
 
     if (!mac || !name || !email || !phone || !answers) {
       return NextResponse.json({ error: 'Faltan datos requeridos' }, { status: 400 });
     }
 
+    // Score the quiz against the question bank (server-side authoritative).
     const allQuestions = await getQuestions();
-
     let correctCount = 0;
-    for (const answer of answers) {
-      const question = allQuestions.find(q => q.id === answer.questionId);
-      if (question) {
-        const correctText = question.options[question.correctAnswer];
-        if (correctText === answer.selectedText) {
-          correctCount++;
-        }
-      }
+    for (const a of answers) {
+      const q = allQuestions.find((q) => q.id === a.questionId);
+      if (q && q.options[q.correctAnswer] === a.selectedText) correctCount++;
     }
 
     const session = await getUserSession(mac);
     const totalAttempts = session ? session.totalAttempts + 1 : 1;
     const passed = correctCount >= 3;
 
-    if (passed) {
-      const now = new Date();
-      const expiresAt = new Date(now.getTime() + 24 * 60 * 60 * 1000);
-
-      try {
-        await saveUserSession({
-          mac, name, email, phone,
-          connectedAt: now.toISOString(),
-          expiresAt: expiresAt.toISOString(),
-          correctAnswers: correctCount,
-          totalAttempts,
-        });
-      } catch (e) {
-        console.error('KV save failed (non-fatal):', e);
-      }
-
-      let omadaGranted = false;
-      let omadaError = '';
-      try {
-        await grantOmadaAccess({
-          clientMac: mac,
-          apMac: apMac || '',
-          ssidName: ssidName || '',
-          radioId: radioId || '0',
-          site: site || '',
-          loginUrl: loginUrl || '',
-        });
-        omadaGranted = true;
-      } catch (e) {
-        omadaError = String(e);
-        console.error('[Omada] Final error:', e);
-      }
-
+    if (!passed) {
       return NextResponse.json({
-        passed: true,
+        passed: false,
         correctAnswers: correctCount,
         totalQuestions: answers.length,
-        message: 'Respondiste correctamente. ¡Ya podés navegar!',
-        expiresAt: expiresAt.toISOString(),
-        omadaGranted,
-        omadaError: omadaGranted ? undefined : omadaError,
+        message: `Necesitás al menos 3 respuestas correctas. Obtuviste ${correctCount}.`,
+        attemptsCount: totalAttempts,
       });
     }
 
+    // Persist the session (KV is non-fatal — keep going even if it fails).
+    const now = new Date();
+    const expiresAt = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+    try {
+      await saveUserSession({
+        mac,
+        name,
+        email,
+        phone,
+        connectedAt: now.toISOString(),
+        expiresAt: expiresAt.toISOString(),
+        correctAnswers: correctCount,
+        totalAttempts,
+      });
+    } catch (e) {
+      console.error('KV save failed (non-fatal):', e);
+    }
+
+    // Authorize the client via Omada Open API.
+    let omadaGranted = false;
+    let omadaError: string | undefined;
+    try {
+      // Allow runtime override of siteId via Omada redirect param if env is missing.
+      if (!process.env.OMADA_SITE_ID && site) {
+        process.env.OMADA_SITE_ID = site;
+      }
+      await authorizeClient({
+        clientMac: mac,
+        apMac: apMac || '',
+        ssidName: ssidName || '',
+        radioId: typeof radioId === 'number' ? radioId : parseInt(String(radioId ?? '0'), 10) || 0,
+        time: 24 * 60 * 60, // 1 day
+        authType: 4, // External Portal Server
+      });
+      omadaGranted = true;
+    } catch (e) {
+      omadaError = e instanceof Error ? e.message : String(e);
+      console.error('[Omada] Authorize error:', omadaError);
+    }
+
     return NextResponse.json({
-      passed: false,
+      passed: true,
       correctAnswers: correctCount,
       totalQuestions: answers.length,
-      message: `Necesitás al menos 3 respuestas correctas. Obtuviste ${correctCount}.`,
-      attemptsCount: totalAttempts,
+      message: omadaGranted
+        ? 'Respondiste correctamente. ¡Ya podés navegar!'
+        : 'Quiz aprobado, pero hubo un problema al habilitar internet. Reintentá en unos segundos.',
+      expiresAt: expiresAt.toISOString(),
+      omadaGranted,
+      omadaError, // surface in the UI / debug page when present
     });
   } catch (error) {
     console.error('Error al procesar quiz:', error);
